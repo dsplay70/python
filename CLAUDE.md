@@ -13,6 +13,7 @@ Paper Recommender — a CLI tool that recommends academic papers using the Seman
 │   ├── __init__.py
 │   ├── api.py                       # Semantic Scholar API client
 │   ├── recommender.py               # Core recommendation logic
+│   ├── preprocessor.py              # NotebookLM MCP / LLM preprocessing
 │   └── cli.py                       # CLI (argparse) interface
 ├── requirements.txt                 # pip dependencies
 ├── venv/                            # Python virtual environment (not committed)
@@ -54,7 +55,8 @@ python main.py citations "Attention Is All You Need"
 # Personalized recommendations from your reading list
 python main.py for-me my_papers.txt
 python main.py for-me my_papers.txt --plan research_plan.txt
-python main.py for-me my_papers.txt --plan research_plan.txt -n 30
+python main.py for-me my_papers.txt --profile preprocessed.json
+python main.py for-me my_papers.txt --profile preprocessed.json -n 30
 
 # Limit results
 python main.py search "LLM alignment" -n 5
@@ -73,7 +75,29 @@ The paper recommender itself uses only the Python standard library (`urllib`, `j
 
 - **`api.py`**: Low-level HTTP client for Semantic Scholar. Handles rate limiting (1 req/sec), identifier normalization (DOI, arXiv, URL), and response parsing into `Paper` dataclasses.
 - **`recommender.py`**: High-level operations — keyword search, paper-based recommendations, references, and citations. Resolves user input to a paper before querying.
+- **`preprocessor.py`**: Schema and loader for LLM-preprocessed research profiles. Defines `ResearchProfile` dataclass and prompt template for NotebookLM MCP queries.
 - **`cli.py`**: Thin CLI layer using argparse subcommands. Each subcommand maps to a `PaperRecommender` method.
+
+### NotebookLM MCP Integration
+
+The `for-me` command supports a two-stage pipeline where an LLM (via NotebookLM MCP server) preprocesses research context:
+
+```
+NotebookLM MCP → preprocessed.json → Python CLI → Semantic Scholar API → results
+```
+
+The `--profile` flag accepts a JSON file with this schema:
+
+```json
+{
+    "keywords": ["RLHF", "multi-agent systems"],
+    "themes": ["AI alignment", "LLM safety"],
+    "research_gaps": ["scalable oversight for LLMs"],
+    "paper_ids": ["arXiv:1706.03762"]
+}
+```
+
+Without `--profile`, the `--plan` flag falls back to regex-based keyword extraction.
 
 ## Key Conventions
 

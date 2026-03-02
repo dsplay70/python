@@ -5,23 +5,20 @@ from collections import Counter
 from pathlib import Path
 
 from paper_recommender.api import Paper, SemanticScholarClient
+from paper_recommender.preprocessor import ResearchProfile
 
 
 def _extract_keywords_from_text(text: str) -> list[str]:
-    """Extract meaningful keyword phrases from research plan text.
+    """Extract keyword phrases from text using simple heuristics.
 
-    Splits text into candidate terms by punctuation/newlines, then filters
-    to keep only short phrases that look like research topics.
+    This is the fallback when no LLM-preprocessed profile is available.
     """
-    # Split by common delimiters: commas, semicolons, newlines, bullets
     chunks = re.split(r"[,;\n\r\u2022\u30fb]+", text)
     keywords = []
     for chunk in chunks:
         chunk = chunk.strip().strip("-").strip("・").strip("•").strip()
-        # Skip very short or very long fragments
         if len(chunk) < 3 or len(chunk) > 120:
             continue
-        # Skip fragments that are clearly full sentences (rough heuristic)
         word_count = len(chunk.split())
         if word_count > 10:
             continue
@@ -99,22 +96,32 @@ class PaperRecommender:
         self,
         paper_list_path: str,
         plan_path: str | None = None,
+        profile: ResearchProfile | None = None,
         limit: int = 20,
     ) -> tuple[list[Paper], list[Paper], list[str]]:
-        """Recommend papers based on a reading list and optional research plan.
+        """Recommend papers based on a reading list and research context.
 
-        Args:
-            paper_list_path: Path to a text file with one paper per line
-                             (title, DOI, arXiv ID, or URL).
-            plan_path: Optional path to a research plan text file.
-            limit: Maximum number of recommendations to return.
+        Supports three modes (can be combined):
+        1. paper_list_path: Text file with one paper per line (always required)
+        2. plan_path: Raw research plan text → fallback regex keyword extraction
+        3. profile: LLM-preprocessed ResearchProfile (from NotebookLM MCP)
+           → high-quality keywords, themes, and research gaps
+
+        When a profile is provided, its search_queries take priority over
+        regex-extracted keywords from plan_path.
 
         Returns:
-            Tuple of (resolved_source_papers, recommended_papers, keywords_used).
+            Tuple of (resolved_source_papers, recommended_papers, queries_used).
         """
         # 1. Read and resolve the paper list
         lines = Path(paper_list_path).read_text(encoding="utf-8").splitlines()
         paper_inputs = [line.strip() for line in lines if line.strip() and not line.strip().startswith("#")]
+
+        # Merge paper IDs from profile if available
+        if profile and profile.paper_ids:
+            for pid in profile.paper_ids:
+                if pid.strip() and pid.strip() not in paper_inputs:
+                    paper_inputs.append(pid.strip())
 
         resolved: list[Paper] = []
         for entry in paper_inputs:
@@ -130,7 +137,7 @@ class PaperRecommender:
             return [], [], []
 
         # 2. Gather recommendations from each source paper
-        rec_counts: Counter[str] = Counter()  # paper_id -> times recommended
+        rec_counts: Counter[str] = Counter()
         rec_map: dict[str, Paper] = {}
         source_ids = {p.paper_id for p in resolved}
 
@@ -142,22 +149,26 @@ class PaperRecommender:
                     rec_counts[r.paper_id] += 1
                     rec_map[r.paper_id] = r
 
-        # 3. If a research plan is provided, extract keywords and boost via search
-        keywords_used: list[str] = []
-        if plan_path:
+        # 3. Build search queries — prefer profile (LLM), fall back to regex
+        queries_used: list[str] = []
+        if profile:
+            queries_used = profile.search_queries
+            print(f"  Using {len(queries_used)} queries from LLM-preprocessed profile")
+        elif plan_path:
             plan_text = Path(plan_path).read_text(encoding="utf-8")
-            keywords_used = _extract_keywords_from_text(plan_text)
-            print(f"  Extracted {len(keywords_used)} keywords from research plan")
-            for kw in keywords_used[:5]:  # search top 5 keywords
-                print(f"  Searching keyword: {kw}")
-                results = self.client.search(kw, limit=5)
-                for r in results:
-                    if r.paper_id not in source_ids:
-                        rec_counts[r.paper_id] += 1
-                        rec_map[r.paper_id] = r
+            queries_used = _extract_keywords_from_text(plan_text)
+            print(f"  Extracted {len(queries_used)} keywords from research plan (regex fallback)")
 
-        # 4. Rank: papers recommended by more sources rank higher,
-        #    break ties by citation count
+        # Search top queries and boost matching papers
+        for q in queries_used[:10]:
+            print(f"  Searching: {q}")
+            results = self.client.search(q, limit=5)
+            for r in results:
+                if r.paper_id not in source_ids:
+                    rec_counts[r.paper_id] += 1
+                    rec_map[r.paper_id] = r
+
+        # 4. Rank: frequency of recommendation, then citation count
         ranked_ids = sorted(
             rec_counts.keys(),
             key=lambda pid: (rec_counts[pid], rec_map[pid].citation_count),
@@ -165,7 +176,7 @@ class PaperRecommender:
         )
 
         recommended = [rec_map[pid] for pid in ranked_ids[:limit]]
-        return resolved, recommended, keywords_used
+        return resolved, recommended, queries_used
 
     def _resolve_paper(self, paper_input: str) -> Paper | None:
         source = self.client.get_paper(paper_input)

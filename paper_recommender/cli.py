@@ -67,14 +67,28 @@ def cmd_citations(args):
 
 def cmd_profile_recommend(args):
     """Handle the 'for-me' subcommand."""
+    from paper_recommender.preprocessor import load_profile
+
     recommender = PaperRecommender()
     print(f"Reading paper list: {args.papers_file}")
+
+    # Load LLM-preprocessed profile if provided
+    profile = None
+    if args.profile:
+        print(f"Loading LLM-preprocessed profile: {args.profile}")
+        profile = load_profile(args.profile)
+        print(f"  Keywords: {', '.join(profile.keywords[:5])}")
+        print(f"  Themes: {', '.join(profile.themes[:5])}")
+        if profile.research_gaps:
+            print(f"  Research gaps: {', '.join(profile.research_gaps[:3])}")
+
     if args.plan:
         print(f"Reading research plan: {args.plan}")
 
-    resolved, recommended, keywords = recommender.recommend_from_profile(
+    resolved, recommended, queries = recommender.recommend_from_profile(
         paper_list_path=args.papers_file,
         plan_path=args.plan,
+        profile=profile,
         limit=args.limit,
     )
 
@@ -83,8 +97,8 @@ def cmd_profile_recommend(args):
         sys.exit(1)
 
     print(f"\nResolved {len(resolved)} source papers from your list.")
-    if keywords:
-        print(f"Keywords from research plan: {', '.join(keywords[:10])}")
+    if queries:
+        print(f"Search queries used: {', '.join(queries[:10])}")
 
     _print_papers(recommended, label="Personalized recommendations")
 
@@ -130,7 +144,11 @@ def main():
     )
     sp_forme.add_argument(
         "--plan",
-        help="Path to a research plan text file (optional, boosts relevance)",
+        help="Path to a research plan text file (regex fallback if no --profile)",
+    )
+    sp_forme.add_argument(
+        "--profile",
+        help="Path to LLM-preprocessed JSON (from NotebookLM MCP or Claude API)",
     )
     sp_forme.add_argument("-n", "--limit", type=int, default=20, help="Max results (default: 20)")
     sp_forme.set_defaults(func=cmd_profile_recommend)
