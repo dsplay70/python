@@ -102,6 +102,36 @@ def cmd_profile_recommend(args):
 
     _print_papers(recommended, label="Personalized recommendations")
 
+    # Download PDFs if requested
+    if args.download:
+        from paper_recommender.downloader import download_papers
+
+        output_dir = args.output or "papers"
+        print(f"\nDownloading PDFs to: {output_dir}/")
+        downloaded = download_papers(recommended, output_dir=output_dir)
+        print(f"\nDownloaded {len(downloaded)}/{len(recommended)} papers.")
+
+
+def cmd_download(args):
+    """Handle the 'download' subcommand."""
+    from paper_recommender.downloader import download_papers
+
+    recommender = PaperRecommender()
+    paper_input = " ".join(args.paper)
+    print(f'Finding paper: "{paper_input}"')
+
+    source, recs = recommender.recommend_from_paper(paper_input, limit=args.limit)
+    if source is None:
+        print("Error: Could not find the specified paper.")
+        sys.exit(1)
+
+    papers_to_download = [source] + recs if args.include_recs else [source]
+    output_dir = args.output or "papers"
+
+    print(f"\nDownloading {len(papers_to_download)} paper(s) to: {output_dir}/")
+    downloaded = download_papers(papers_to_download, output_dir=output_dir)
+    print(f"\nDownloaded {len(downloaded)}/{len(papers_to_download)} papers.")
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -151,7 +181,29 @@ def main():
         help="Path to LLM-preprocessed JSON (from NotebookLM MCP or Claude API)",
     )
     sp_forme.add_argument("-n", "--limit", type=int, default=20, help="Max results (default: 20)")
+    sp_forme.add_argument(
+        "--download", action="store_true",
+        help="Download PDFs of recommended papers",
+    )
+    sp_forme.add_argument(
+        "-o", "--output", default="papers",
+        help="Output directory for downloaded PDFs (default: papers/)",
+    )
     sp_forme.set_defaults(func=cmd_profile_recommend)
+
+    # download
+    sp_dl = subparsers.add_parser("download", help="Download a paper's PDF (and optionally its recommendations)")
+    sp_dl.add_argument("paper", nargs="+", help="Paper title, DOI, arXiv ID, or URL")
+    sp_dl.add_argument(
+        "--include-recs", action="store_true",
+        help="Also download recommended papers",
+    )
+    sp_dl.add_argument("-n", "--limit", type=int, default=5, help="Max recommendations to download (default: 5)")
+    sp_dl.add_argument(
+        "-o", "--output", default="papers",
+        help="Output directory for downloaded PDFs (default: papers/)",
+    )
+    sp_dl.set_defaults(func=cmd_download)
 
     args = parser.parse_args()
     args.func(args)

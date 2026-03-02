@@ -11,7 +11,7 @@ from dataclasses import dataclass
 BASE_URL = "https://api.semanticscholar.org/graph/v1"
 RECOMMEND_URL = "https://api.semanticscholar.org/recommendations/v1/papers/forpaper"
 
-PAPER_FIELDS = "paperId,title,authors,year,abstract,citationCount,url,externalIds"
+PAPER_FIELDS = "paperId,title,authors,year,abstract,citationCount,url,externalIds,openAccessPdf"
 
 # Rate limit: 1 request per second for unauthenticated access
 REQUEST_INTERVAL = 1.0
@@ -27,6 +27,16 @@ class Paper:
     citation_count: int
     url: str
     arxiv_id: str | None = None
+    pdf_url: str | None = None
+
+    @property
+    def best_pdf_url(self) -> str | None:
+        """Return the best available PDF URL (open access or arXiv)."""
+        if self.pdf_url:
+            return self.pdf_url
+        if self.arxiv_id:
+            return f"https://arxiv.org/pdf/{self.arxiv_id}.pdf"
+        return None
 
     def summary(self, index: int | None = None) -> str:
         prefix = f"[{index}] " if index is not None else ""
@@ -56,6 +66,8 @@ def _parse_paper(data: dict) -> Paper | None:
     authors = [a.get("name", "") for a in (data.get("authors") or [])]
     external_ids = data.get("externalIds") or {}
     arxiv_id = external_ids.get("ArXiv")
+    open_access = data.get("openAccessPdf") or {}
+    pdf_url = open_access.get("url")
     return Paper(
         paper_id=data.get("paperId", ""),
         title=data.get("title", ""),
@@ -65,6 +77,7 @@ def _parse_paper(data: dict) -> Paper | None:
         citation_count=data.get("citationCount", 0),
         url=data.get("url", ""),
         arxiv_id=arxiv_id,
+        pdf_url=pdf_url,
     )
 
 

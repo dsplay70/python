@@ -14,6 +14,7 @@ Paper Recommender — a CLI tool that recommends academic papers using the Seman
 │   ├── api.py                       # Semantic Scholar API client
 │   ├── recommender.py               # Core recommendation logic
 │   ├── preprocessor.py              # NotebookLM MCP / LLM preprocessing
+│   ├── downloader.py                # PDF download from arXiv / open access
 │   └── cli.py                       # CLI (argparse) interface
 ├── requirements.txt                 # pip dependencies
 ├── venv/                            # Python virtual environment (not committed)
@@ -58,6 +59,14 @@ python main.py for-me my_papers.txt --plan research_plan.txt
 python main.py for-me my_papers.txt --profile preprocessed.json
 python main.py for-me my_papers.txt --profile preprocessed.json -n 30
 
+# Recommend + download PDFs in one step
+python main.py for-me my_papers.txt --profile preprocessed.json --download
+python main.py for-me my_papers.txt --download -o ./pdfs
+
+# Download a single paper's PDF
+python main.py download "Attention Is All You Need"
+python main.py download "arXiv:1706.03762" --include-recs -n 5
+
 # Limit results
 python main.py search "LLM alignment" -n 5
 ```
@@ -76,6 +85,7 @@ The paper recommender itself uses only the Python standard library (`urllib`, `j
 - **`api.py`**: Low-level HTTP client for Semantic Scholar. Handles rate limiting (1 req/sec), identifier normalization (DOI, arXiv, URL), and response parsing into `Paper` dataclasses.
 - **`recommender.py`**: High-level operations — keyword search, paper-based recommendations, references, and citations. Resolves user input to a paper before querying.
 - **`preprocessor.py`**: Schema and loader for LLM-preprocessed research profiles. Defines `ResearchProfile` dataclass and prompt template for NotebookLM MCP queries.
+- **`downloader.py`**: PDF download from open access URLs and arXiv. Handles filename sanitization and deduplication.
 - **`cli.py`**: Thin CLI layer using argparse subcommands. Each subcommand maps to a `PaperRecommender` method.
 
 ### NotebookLM MCP Integration
