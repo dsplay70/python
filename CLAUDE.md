@@ -51,6 +51,11 @@ python main.py refs "Attention Is All You Need"
 # Show papers that cite a paper
 python main.py citations "Attention Is All You Need"
 
+# Personalized recommendations from your reading list
+python main.py for-me my_papers.txt
+python main.py for-me my_papers.txt --plan research_plan.txt
+python main.py for-me my_papers.txt --plan research_plan.txt -n 30
+
 # Limit results
 python main.py search "LLM alignment" -n 5
 ```

@@ -65,6 +65,30 @@ def cmd_citations(args):
     _print_papers(papers, label="Citing papers")
 
 
+def cmd_profile_recommend(args):
+    """Handle the 'for-me' subcommand."""
+    recommender = PaperRecommender()
+    print(f"Reading paper list: {args.papers_file}")
+    if args.plan:
+        print(f"Reading research plan: {args.plan}")
+
+    resolved, recommended, keywords = recommender.recommend_from_profile(
+        paper_list_path=args.papers_file,
+        plan_path=args.plan,
+        limit=args.limit,
+    )
+
+    if not resolved:
+        print("Error: Could not resolve any papers from the list.")
+        sys.exit(1)
+
+    print(f"\nResolved {len(resolved)} source papers from your list.")
+    if keywords:
+        print(f"Keywords from research plan: {', '.join(keywords[:10])}")
+
+    _print_papers(recommended, label="Personalized recommendations")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Paper Recommender - Find and discover academic papers",
@@ -94,6 +118,22 @@ def main():
     sp_cites.add_argument("paper", nargs="+", help="Paper title, DOI, arXiv ID, or URL")
     sp_cites.add_argument("-n", "--limit", type=int, default=10, help="Max results (default: 10)")
     sp_cites.set_defaults(func=cmd_citations)
+
+    # for-me (profile-based recommendation)
+    sp_forme = subparsers.add_parser(
+        "for-me",
+        help="Personalized recommendations from your reading list and research plan",
+    )
+    sp_forme.add_argument(
+        "papers_file",
+        help="Path to a text file listing papers (one per line: title, DOI, arXiv ID, or URL)",
+    )
+    sp_forme.add_argument(
+        "--plan",
+        help="Path to a research plan text file (optional, boosts relevance)",
+    )
+    sp_forme.add_argument("-n", "--limit", type=int, default=20, help="Max results (default: 20)")
+    sp_forme.set_defaults(func=cmd_profile_recommend)
 
     args = parser.parse_args()
     args.func(args)
